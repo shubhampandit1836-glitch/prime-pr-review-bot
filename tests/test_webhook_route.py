@@ -36,7 +36,12 @@ def _pr_payload(action: str = "opened", draft: bool = False) -> bytes:
     return json.dumps({
         "action": action,
         "number": 42,
-        "pull_request": {"number": 42, "title": "Add feature", "draft": draft},
+        "pull_request": {
+            "number": 42,
+            "title": "Add feature",
+            "draft": draft,
+            "head": {"sha": "abc123def456"},
+        },
         "repository": {"full_name": "octocat/hello-world"},
         "installation": {"id": 12345678},
     }).encode()

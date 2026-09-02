@@ -48,3 +48,27 @@ async def get_pr_diff(installation_id: int, repo_full_name: str, pr_number: int)
         )
         response.raise_for_status()
         return response.text
+    
+async def get_file_content(
+    installation_id: int, repo_full_name: str, file_path: str, ref: str
+) -> str:
+    """
+    Fetch the full raw content of one file at a specific commit (ref) —
+    needed because AST parsing requires the complete file, not just the
+    changed lines a diff shows. 'ref' should be the PR's head commit SHA,
+    so we parse the file exactly as it exists in the proposed change.
+    """
+    token = await get_installation_access_token(installation_id)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{repo_full_name}/contents/{file_path}",
+            params={"ref": ref},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github.raw+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        response.raise_for_status()
+        return response.text

@@ -5,10 +5,15 @@ class Repository(BaseModel):
     full_name: str  # e.g. "octocat/hello-world"
 
 
+class CommitRef(BaseModel):
+    sha: str
+
+
 class PullRequestRef(BaseModel):
     number: int
     title: str
     draft: bool = False
+    head: CommitRef
 
 
 class Installation(BaseModel):

@@ -2,6 +2,10 @@ import logging
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
 
+from app.diff_parser import parse_diff
+from app.ast_context import get_hunk_context
+from app.github_client import get_pr_diff, get_file_content
+
 from app.config import get_settings
 from app.github_client import get_pr_diff
 from app.github_events import PullRequestWebhookPayload
@@ -65,7 +69,31 @@ async def github_webhook(
     )
     logger.info("Fetched diff for PR #%s — %d characters", payload.number, len(diff))
 
-    # Step 3 picks up here: parse this diff with tree-sitter to extract
-    # AST-aware context around each changed hunk. Not built yet.
+    hunks = parse_diff(diff)
+    logger.info("Parsed %d changed hunk(s)", len(hunks))
 
-    return {"status": "accepted", "pr": payload.number, "diff_length": len(diff)}
+    for hunk in hunks:
+        try:
+            file_content = await get_file_content(
+                installation_id=payload.installation.id,
+                repo_full_name=payload.repository.full_name,
+                file_path=hunk.file_path,
+                ref=payload.pull_request.head_sha, # pyright: ignore[reportAttributeAccessIssue]
+            )
+        except Exception:
+            logger.warning("Could not fetch content for %s, skipping AST context", hunk.file_path)
+            continue
+
+        context = get_hunk_context(hunk, file_content)
+        if context.enclosing_code:
+            logger.info(
+                "%s:%d-%d is inside %s → %d chars of context",
+                hunk.file_path, hunk.start_line, hunk.end_line,
+                context.enclosing_node_type, len(context.enclosing_code),
+            )
+        else:
+            logger.info("%s:%d-%d has no enclosing function/class context", hunk.file_path, hunk.start_line, hunk.end_line)
+
+    # Step 4 picks up here: planner agent decides which checks apply.
+
+    return {"status": "accepted", "pr": payload.number, "hunks_found": len(hunks)}

@@ -11,6 +11,10 @@ class PullRequestRef(BaseModel):
     draft: bool = False
 
 
+class Installation(BaseModel):
+    id: int
+
+
 class PullRequestWebhookPayload(BaseModel):
     """
     Subset of GitHub's pull_request event payload. We deliberately model
@@ -23,3 +27,4 @@ class PullRequestWebhookPayload(BaseModel):
     number: int
     pull_request: PullRequestRef
     repository: Repository
+    installation: Installation

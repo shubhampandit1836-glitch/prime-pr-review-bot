@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Header, HTTPException, Request, status
 
 from app.config import get_settings
+from app.github_client import get_pr_diff
 from app.github_events import PullRequestWebhookPayload
 from app.security import verify_github_signature
 
@@ -11,9 +12,6 @@ logger = logging.getLogger("pr_review_bot")
 
 app = FastAPI(title="PR Review Bot")
 
-# A PR fires many webhook actions (labeled, assigned, review_requested, ...)
-# this app has no business reacting to. Filtering here keeps the eventual
-# agent pipeline from ever being invoked on events it wasn't designed for.
 RELEVANT_ACTIONS = {"opened", "synchronize", "reopened"}
 
 
@@ -30,19 +28,12 @@ async def github_webhook(
 ) -> dict:
     settings = get_settings()
 
-    # Read the RAW body for signature verification before any JSON parsing
-    # touches it — verifying a re-serialized copy would pass even for a
-    # tampered payload, since re-serialization can normalize away exactly
-    # the bytes the signature covers.
     raw_body = await request.body()
 
     if not verify_github_signature(raw_body, x_hub_signature_256, settings.github_webhook_secret):
         logger.warning("Rejected webhook delivery with invalid signature")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
-    # GitHub sends a "ping" event once, when the webhook is first configured,
-    # with no pull_request payload at all — handle it explicitly rather than
-    # letting it fall through to a parse error.
     if x_github_event == "ping":
         logger.info("Received GitHub ping event — webhook is configured correctly")
         return {"status": "pong"}
@@ -66,8 +57,15 @@ async def github_webhook(
         payload.repository.full_name, payload.number, payload.action, payload.pull_request.title,
     )
 
-    # Step 2 picks up here: authenticate as the GitHub App installation
-    # and fetch the actual diff. Not built yet — this commit's only job
-    # is "receive and validate correctly."
+    # Step 2: fetch the real diff now that we have an installation ID.
+    diff = await get_pr_diff(
+        installation_id=payload.installation.id,
+        repo_full_name=payload.repository.full_name,
+        pr_number=payload.number,
+    )
+    logger.info("Fetched diff for PR #%s — %d characters", payload.number, len(diff))
 
-    return {"status": "accepted", "pr": payload.number}
+    # Step 3 picks up here: parse this diff with tree-sitter to extract
+    # AST-aware context around each changed hunk. Not built yet.
+
+    return {"status": "accepted", "pr": payload.number, "diff_length": len(diff)}

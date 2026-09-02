@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     # Required in step 1. GitHub App ID / private key are added in step 2
     # when we start calling the GitHub API back, not before — no dead config.
     github_webhook_secret: str
+    github_app_id: str
+    github_private_key_path: str = "private-key.pem"
 
     environment: str = "development"
 

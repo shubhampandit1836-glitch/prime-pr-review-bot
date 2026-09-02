@@ -3,6 +3,7 @@ import hmac
 import json
 
 import pytest
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
@@ -37,6 +38,7 @@ def _pr_payload(action: str = "opened", draft: bool = False) -> bytes:
         "number": 42,
         "pull_request": {"number": 42, "title": "Add feature", "draft": draft},
         "repository": {"full_name": "octocat/hello-world"},
+        "installation": {"id": 12345678},
     }).encode()
 
 
@@ -54,17 +56,24 @@ def test_rejects_invalid_signature():
     assert resp.status_code == 401
 
 
-def test_accepts_valid_pr_opened():
+@patch("app.main.get_pr_diff", new_callable=AsyncMock)
+def test_accepts_valid_pr_opened(mock_get_pr_diff):
+    mock_get_pr_diff.return_value = "fake diff content"
     body = _pr_payload(action="opened")
     resp = client.post("/webhook", content=body, headers=_signed_headers(body, "pull_request"))
     assert resp.status_code == 202
-    assert resp.json() == {"status": "accepted", "pr": 42}
+    assert resp.json()["status"] == "accepted"
+    assert resp.json()["pr"] == 42
+    mock_get_pr_diff.assert_awaited_once()
 
 
-def test_accepts_synchronize():
+@patch("app.main.get_pr_diff", new_callable=AsyncMock)
+def test_accepts_synchronize(mock_get_pr_diff):
+    mock_get_pr_diff.return_value = "fake diff content"
     body = _pr_payload(action="synchronize")
     resp = client.post("/webhook", content=body, headers=_signed_headers(body, "pull_request"))
     assert resp.json()["status"] == "accepted"
+    mock_get_pr_diff.assert_awaited_once()
 
 
 def test_ignores_irrelevant_action():
